@@ -25,7 +25,7 @@ bl_info = {
      "description": "Makes a series of cross-sections and exports an svg file",
      "warning": "",
      "wiki_url": "tba",
-     "tracker_url": "https://github.com/rgsouthall/laser_slicer/issues",
+     "tracker_url": "https://github.com/aenckli/x_slicer",
      "category": "Object"}
 
 import bpy, os, bmesh, numpy
@@ -33,18 +33,11 @@ from bpy.props import FloatProperty, BoolProperty, EnumProperty, IntProperty, St
 from mathutils import Vector
 import math
 from itertools import groupby
-import time
 
 # global constants
-CR = '\n'
 DELTA = 1e-6
 INFINITY_POS = 100
 INFINITY_NEG = -100
-
-# global variable
-# DEBUG
-DebugTrigger = False
-
 
 def newrow(layout, s1, root, s2, e):
     row = layout.row()
@@ -139,13 +132,6 @@ def slicer(settings):
     mm2pi = dpi/25.4
     scale = f_scale*mm2pi
 
-# DEBUG
-    global DebugTrigger
-    fdebuglog = open('z:/debug.log', 'w')
-    fdebuglog.truncate(0)
-    fdebuglog.seek(0)
-# DEBUG
-    
     vtlist = []
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -155,10 +141,6 @@ def slicer(settings):
         
 # ---------------------------------------------------------------------------------------------------------------
         vlen, elen, vlenlist, elenlist = 0, 0, [0], [0]
-# vlen - total number of vertices    
-# elen - total number of edges
-# vlenlist - list, vertice indices
-# elenlist - list, vertice indices of edges
         vtlist.append([])
         vlist = []
         elist = []
@@ -181,7 +163,6 @@ def slicer(settings):
                 newedges = [e for e in newgeo if isinstance(e, bmesh.types.BMEdge)]        
                 voffset = min([v.index for v in newverts])
                 
-# try to scrap mesh        
                 temp = [(v.co[0], v.co[1], v.co[2]) for v in newverts]  
                 vtlist_mesh.extend(temp)
                 
@@ -193,7 +174,6 @@ def slicer(settings):
                 vlenlist.append(len(newverts) + vlenlist[-1])
                 elenlist.append(len(newedges) + elenlist[-1])
 
-# modified for spacing between layer
                 lh[idir] += (-(lt+ls[idir]), (lt+ls[idir]))[side == 0]
                 cbm.free()  
                 
@@ -212,15 +192,11 @@ def slicer(settings):
 
         for vr in vranges:
             vlist, elist, erem = [], [], []
-# all edge indices in a layer
             layeredges = edlist_mesh[vr[2]:vr[3]]
 
-# all vertex indices in a layer
             edgeverts = [ed[0] for ed in layeredges] + [ed[1] for ed in layeredges]
-# singular vertex if it occurs only once in edge list, edgeverts            
             edgesingleverts = [ev for ev in edgeverts if edgeverts.count(ev) == 1]
 
-# remove duplicate edges            
             for ed in layeredges:
                 el = [ev for ev in edgeverts if edgeverts.count(ev) > 2]
                 if ed[0] in el and ed[1] in el:
@@ -229,7 +205,6 @@ def slicer(settings):
                 layeredges.remove(er)
 
             if edgesingleverts:
-            # start with single open ended edge
                 e = [ed for ed in layeredges if ed[0] in edgesingleverts or ed[1] in edgesingleverts][0]
                 if e[0] in edgesingleverts:
                     vlist.append(e[0])
@@ -239,21 +214,20 @@ def slicer(settings):
                     vlist.append(e[0])
                 elist.append(e)
             else:   
-            # start with 1st edge
-                elist.append(layeredges[0]) # Add this edge to the edge list
-                vlist.append(elist[0][0]) # Add the edges vertices to the vertex list
+                elist.append(layeredges[0])
+                vlist.append(elist[0][0])
                 vlist.append(elist[0][1])
                 
             while len(elist) < len(layeredges):
                 va = 0
                 for e in [ed for ed in layeredges if ed not in elist]:
-                    if e[0] not in vlist and e[1] == vlist[-1]: # If a new edge contains the last vertex in the vertex list, add the other edge vertex
+                    if e[0] not in vlist and e[1] == vlist[-1]:
                         va = 1
                         vlist.append(e[0])
                         elist.append(e)
                         
                         if len(elist) == len(layeredges):
-                           vlist.append(-2)         # open ended
+                           vlist.append(-2)
                             
                     if e[1] not in vlist and e[0] == vlist[-1]:
                         va = 1
@@ -268,11 +242,9 @@ def slicer(settings):
                         va = 2
                                                                                 
                 if va in (0, 2):
-                    # va == 0, error
                     vlist.append((-1, -2)[va == 0])
                     
                     if len(elist) < len(layeredges):
-                    # another edge loop start
                         try:
                             e1 = [ed for ed in layeredges if ed not in elist and (ed[0] in edgesingleverts or ed[1] in edgesingleverts)][0]
                             if e1[0] in edgesingleverts:
@@ -288,10 +260,8 @@ def slicer(settings):
                             vlist.append(e1[1])
                         elist.append(e1)
     
-# try to scrap mesh        
             vtlist[idir].append([(vtlist_mesh[v], v)[v < 0] for v in vlist])            
             
-# remove duplicate vertices created by bisect tool, especially when bisect on YZ plane
             i = 1
             last_i = 0
             sp_st = 0
@@ -328,12 +298,10 @@ def slicer(settings):
         level = [0,0]
 
         for i in range(nlayers[1]):
-# add secondary layer            
             vl[1] = vtlist[1][i]
             level[1] = vl[1][0][acut[1]]
 
             for j in range(nlayers[0]):
-# add primary layer                
                 vl[0] = vtlist[0][j]
                 level[0] = vl[0][0][acut[0]]
 
@@ -578,12 +546,10 @@ def slicer(settings):
                 cxsize = czsize
             
             if (sepfile and svgpos == '0') or (sepfile and vci == 0 and svgpos == '1'):
-# 0 - top left, 1 - staggered        
                 xdiff = -xmin + ct
                 ydiff = -ymin + ct
 
             elif (sepfile and svgpos == '1') or not sepfile:            
-# staggered        
                 if f_scale * (xmaxlast + cxsize) <= mwidth:
                     xdiff = xmaxlast - xmin + ct
                     ydiff = yrowpos - ymin + ct
@@ -611,11 +577,9 @@ def slicer(settings):
                     rysize = cysize
         
             elif sepfile and svgpos == '2':
-# centered        
                 xdiff = mwidth/(2 * f_scale) - (0.5 * cxsize) - xmin
                 ydiff = mheight/(2 * f_scale) - (0.5 * cysize) - ymin
 
-# Jimmy: locate svg at original pos
             elif sepfile and svgpos == '3':
                 xdiff = 0
                 ydiff = 0
@@ -727,10 +691,6 @@ def slicer(settings):
     aob.select_set(True)
     bpy.context.view_layer.objects.active = aob
 
-# DEBUG
-    fdebuglog.close()
-# DEBUG
-        
 class OBJECT_OT_X_Slicer(bpy.types.Operator):
     bl_label = "X-Slicer"
     bl_idname = "object.x_slicer"
